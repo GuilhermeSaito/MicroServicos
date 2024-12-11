@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h2>Notificações</h2>
+  <ul id="notificacoes"></ul>
+  <script>
+    const eventSource = new EventSource("http://localhost:5004/stream");
+    eventSource.onmessage = (event) => {
+      const li = document.createElement("li");
+      li.textContent = event.data;
+      document.getElementById("notificacoes").appendChild(li);
+    };
+  </script>
+</body>
+</html>
