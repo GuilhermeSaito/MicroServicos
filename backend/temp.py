@@ -23,8 +23,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS produtos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome TEXT NOT NULL,
-                quantidade INTEGER NOT NULL,
-                cliente TEXT NOT NULL
+                quantidade INTEGER NOT NULL
             )
         ''')
         conn.commit()
@@ -58,61 +57,41 @@ def publish_event(topic, event_data):
 # --------------------------------- Endpoints REST ---------------------------------
 
 # Criar um novo produto
-@app.route("/produtos/create", methods=["POST"])
+@app.route("/produtos", methods=["POST"])
 def criar_produto():
     data = request.json
     nome = data.get("nome")
     quantidade = data.get("quantidade")
-    cliente = data.get("cliente")
 
     if not nome or quantidade is None:
         return jsonify({"error": "Nome e quantidade são obrigatórios"}), 400
 
-    query_db("INSERT INTO produtos (nome, quantidade, cliente) VALUES (?, ?, ?)", (nome, quantidade, cliente))
+    query_db("INSERT INTO produtos (nome, quantidade) VALUES (?, ?)", (nome, quantidade))
     return jsonify({"message": "Produto criado com sucesso"}), 201
 
 # Ler todos os produtos
-@app.route("/produtos/readall", methods=["GET"])
+@app.route("/produtos", methods=["GET"])
 def ler_produtos():
-    produtos = query_db("SELECT id, nome, quantidade, cliente FROM produtos")
-    produtos_list = [{"id": p[0], "nome": p[1], "quantidade": p[2], "cliente": p[3]} for p in produtos]
+    produtos = query_db("SELECT id, nome, quantidade FROM produtos")
+    produtos_list = [{"id": p[0], "nome": p[1], "quantidade": p[2]} for p in produtos]
     return jsonify(produtos_list), 200
 
-def get_id_produto(nome_produto, cliente):
-    if isinstance(nome_produto, list) and isinstance(cliente, list):
-        # Processa par a par os elementos das listas
-        ids = []
-        for nome, cli in zip(nome_produto, cliente):
-            id = query_db("SELECT DISTINCT id FROM produtos WHERE nome = ? AND cliente = ?", (nome, cli), one=True)
-            ids.append(id)
-        return ids
-    else:
-        # Se ambos forem valores únicos
-        id = query_db("SELECT id FROM produtos WHERE nome = ? AND cliente = ?", (nome_produto, cliente), one=True)
-        return id
-
 # Atualizar um produto
-@app.route("/produtos/update", methods=["GET"])
-def atualizar_produto():
+@app.route("/produtos/<int:produto_id>", methods=["PUT"])
+def atualizar_produto(produto_id):
     data = request.json
     nome = data.get("nome")
     quantidade = data.get("quantidade")
-    cliente = data.get("cliente")
-    produto_id = get_id_produto(nome, cliente)
 
-    if not nome or quantidade is None or produto_id is None:
-        return jsonify({"error": "Nome e quantidade e client são obrigatórios"}), 400
+    if not nome or quantidade is None:
+        return jsonify({"error": "Nome e quantidade são obrigatórios"}), 400
 
     query_db("UPDATE produtos SET nome = ?, quantidade = ? WHERE id = ?", (nome, quantidade, produto_id))
     return jsonify({"message": f"Produto {produto_id} atualizado com sucesso"}), 200
 
 # Remover um produto
-@app.route("/produtos/remove", methods=["GET"])
-def remover_produto():
-    data = request.json
-    nome = data.get("nome")
-    cliente = data.get("cliente")
-    produto_id = get_id_produto(nome, cliente)
+@app.route("/produtos/<int:produto_id>", methods=["DELETE"])
+def remover_produto(produto_id):
     query_db("DELETE FROM produtos WHERE id = ?", (produto_id,))
     return jsonify({"message": f"Produto {produto_id} removido com sucesso"}), 200
 
