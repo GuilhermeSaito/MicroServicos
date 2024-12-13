@@ -1,15 +1,74 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Microsserviço de Notificações</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .notifications {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            background-color: #f9f9f9;
+        }
+        .notification {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .notification p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
 <body>
-  <h2>Notificações</h2>
-  <ul id="notificacoes"></ul>
-  <script>
-    const eventSource = new EventSource("http://localhost:5004/stream");
-    eventSource.onmessage = (event) => {
-      const li = document.createElement("li");
-      li.textContent = event.data;
-      document.getElementById("notificacoes").appendChild(li);
-    };
-  </script>
+    <h1>Notificações em Tempo Real</h1>
+    <div class="notifications" id="notifications">
+        <p>Aguardando notificações...</p>
+    </div>
+
+    <script>
+        const notificationsDiv = document.getElementById("notifications");
+
+        // Conectar ao endpoint SSE
+        const eventSource = new EventSource("http://localhost:5004/stream");
+
+        // Manipular mensagens recebidas
+        eventSource.onmessage = (event) => {
+            const notification = JSON.parse(event.data);
+            const notificationElement = document.createElement("div");
+            notificationElement.classList.add("notification");
+
+            notificationElement.innerHTML = `
+                <p><strong>ID do Pedido:</strong> ${notification.id}</p>
+                <p><strong>Status:</strong> ${notification.status}</p>
+            `;
+
+            notificationsDiv.appendChild(notificationElement);
+        };
+
+        // Manipular erros na conexão
+        eventSource.onerror = () => {
+            console.error("Erro ao conectar ao servidor de eventos.");
+            const errorElement = document.createElement("p");
+            errorElement.textContent = "Erro ao conectar ao servidor de notificações.";
+            errorElement.style.color = "red";
+            notificationsDiv.appendChild(errorElement);
+            eventSource.close();
+        };
+    </script>
 </body>
 </html>

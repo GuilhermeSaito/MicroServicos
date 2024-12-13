@@ -34,6 +34,9 @@ def consume_events():
         event = json.loads(body)
         topic = method.routing_key
 
+        print(topic)
+        print(event)
+
         # Determina o status do pedido baseado no tópico
         status_mapping = {
             "Pedidos_Criados": "Pedido Criado",
@@ -43,10 +46,12 @@ def consume_events():
         }
         status = status_mapping.get(topic, "Desconhecido")
 
+        event.append(status)
+
+
         # Cria uma notificação com o ID e status do pedido
-        notification = {"id": event["id"], "status": status}
-        notifications.append(notification)
-        print(f"[Notificação] Nova notificação: {notification}")
+        notifications.append(event)
+        print(f"[Notificação] Nova notificação: {event}")
 
     # Configura consumo de mensagens
     for topic in TOPICS:

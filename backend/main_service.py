@@ -55,9 +55,19 @@ def publish_event(topic, event_data):
     print(f"[RabbitMQ] Evento publicado no tópico '{topic}': {event_data}")
     connection.close()
 
+def get_id_produto(nome_produto, cliente):
+    id = query_db("SELECT id FROM produtos WHERE nome = ? AND cliente = ?", (nome_produto, cliente), one=True)
+    if id == None:
+        return -1
+    return id
+
+def achou_valor(val):
+    if val == -1:
+        return 0
+    return 1
+
 # --------------------------------- Endpoints REST ---------------------------------
 
-# Criar um novo produto
 @app.route("/produtos/create", methods=["POST"])
 def criar_produto():
     data = request.json
@@ -65,31 +75,29 @@ def criar_produto():
     quantidade = data.get("quantidade")
     cliente = data.get("cliente")
 
-    if not nome or quantidade is None:
-        return jsonify({"error": "Nome e quantidade são obrigatórios"}), 400
+    if not nome or quantidade is None or not cliente:
+        return jsonify({"error": "Nome, quantidade e cliente são obrigatórios"}), 400
 
-    query_db("INSERT INTO produtos (nome, quantidade, cliente) VALUES (?, ?, ?)", (nome, quantidade, cliente))
-    return jsonify({"message": "Produto criado com sucesso"}), 201
+    # Verificar se já existe um produto com o mesmo nome e cliente
+    produto_existente = query_db("SELECT id, quantidade FROM produtos WHERE nome = ? AND cliente = ?", (nome, cliente), one=True)
+
+    if produto_existente:
+        # Atualizar a quantidade do produto existente
+        produto_id, quantidade_atual = produto_existente
+        nova_quantidade = quantidade_atual + quantidade
+        query_db("UPDATE produtos SET quantidade = ? WHERE id = ?", (nova_quantidade, produto_id))
+        return jsonify({"message": f"Quantidade do produto '{nome}' para o cliente '{cliente}' atualizada com sucesso"}), 200
+    else:
+        # Criar um novo produto
+        query_db("INSERT INTO produtos (nome, quantidade, cliente) VALUES (?, ?, ?)", (nome, quantidade, cliente))
+        return jsonify({"message": "Produto criado com sucesso"}), 201
 
 # Ler todos os produtos
-@app.route("/produtos/readall", methods=["GET"])
+@app.route("/produtos/getall", methods=["GET"])
 def ler_produtos():
     produtos = query_db("SELECT id, nome, quantidade, cliente FROM produtos")
     produtos_list = [{"id": p[0], "nome": p[1], "quantidade": p[2], "cliente": p[3]} for p in produtos]
     return jsonify(produtos_list), 200
-
-def get_id_produto(nome_produto, cliente):
-    if isinstance(nome_produto, list) and isinstance(cliente, list):
-        # Processa par a par os elementos das listas
-        ids = []
-        for nome, cli in zip(nome_produto, cliente):
-            id = query_db("SELECT DISTINCT id FROM produtos WHERE nome = ? AND cliente = ?", (nome, cli), one=True)
-            ids.append(id)
-        return ids
-    else:
-        # Se ambos forem valores únicos
-        id = query_db("SELECT id FROM produtos WHERE nome = ? AND cliente = ?", (nome_produto, cliente), one=True)
-        return id
 
 # Atualizar um produto
 @app.route("/produtos/update", methods=["GET"])
@@ -99,6 +107,9 @@ def atualizar_produto():
     quantidade = data.get("quantidade")
     cliente = data.get("cliente")
     produto_id = get_id_produto(nome, cliente)
+
+    if not achou_valor(produto_id):
+        return jsonify({"error": "Produto não encontrado"}), 404
 
     if not nome or quantidade is None or produto_id is None:
         return jsonify({"error": "Nome e quantidade e client são obrigatórios"}), 400
@@ -113,29 +124,59 @@ def remover_produto():
     nome = data.get("nome")
     cliente = data.get("cliente")
     produto_id = get_id_produto(nome, cliente)
+
+    if not achou_valor(produto_id):
+        return jsonify({"error": "Produto não encontrado"}), 404
+
     query_db("DELETE FROM produtos WHERE id = ?", (produto_id,))
     return jsonify({"message": f"Produto {produto_id} removido com sucesso"}), 200
 
 # Criar um pedido (publica evento)
-@app.route("/pedidos", methods=["POST"])
+@app.route("/produtos/pedidos/create", methods=["POST"])
 def criar_pedido():
     data = request.json
-    pedido_id = data.get("id")
-    produtos = data.get("produtos")
+    cliente = data.get("cliente")
 
-    if not pedido_id or not produtos:
-        return jsonify({"error": "ID do pedido e lista de produtos são obrigatórios"}), 400
+    if not cliente:
+        return jsonify({"error": "Nome do cliente é obrigatório"}), 400
+
+    produto_existente = query_db("SELECT id, nome, quantidade, cliente FROM produtos WHERE cliente = ?", (cliente,))
+    pedidos_cliente = [
+        {
+            "id": reg[0],
+            "nome": reg[1],
+            "quantidade": reg[2],
+            "cliente": reg[3]
+        }
+        for reg in produto_existente
+    ]
+    evento = pedidos_cliente
 
     # Publicar evento no RabbitMQ
-    evento = {"id": pedido_id, "produtos": produtos}
     publish_event(TOPIC_PEDIDOS_CRIADOS, evento)
-    return jsonify({"message": f"Pedido {pedido_id} criado e evento publicado"}), 201
+    return jsonify({"message": f"Pedido {evento} criado e evento publicado"}), 201
 
 # Excluir um pedido (publica evento)
-@app.route("/pedidos/<int:pedido_id>", methods=["DELETE"])
+@app.route("/produtos/pedidos/delete", methods=["POST"])
 def excluir_pedido(pedido_id):
-    # Publicar evento no RabbitMQ
-    evento = {"id": pedido_id, "produtos": []}  # Supondo que a lista de produtos não é obrigatória aqui
+    data = request.json
+    cliente = data.get("cliente")
+
+    if not cliente:
+        return jsonify({"error": "Nome do cliente é obrigatório"}), 400
+
+    produto_existente = query_db("SELECT id, nome, quantidade, cliente FROM produtos WHERE cliente = ?", (cliente,))
+    pedidos_cliente = [
+        {
+            "id": reg[0],
+            "nome": reg[1],
+            "quantidade": reg[2],
+            "cliente": reg[3]
+        }
+        for reg in produto_existente
+    ]
+    evento = pedidos_cliente
+    
     publish_event(TOPIC_PEDIDOS_EXCLUIDOS, evento)
     return jsonify({"message": f"Pedido {pedido_id} excluído e evento publicado"}), 200
 
