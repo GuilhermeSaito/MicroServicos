@@ -45,10 +45,10 @@ def publish_event(topic, event_data):
     """Publica um evento no RabbitMQ."""
     connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
     channel = connection.channel()
-    channel.queue_declare(queue=topic)
+    channel.exchange_declare(exchange = "app", exchange_type='direct')
 
     channel.basic_publish(
-        exchange="",
+        exchange="app",
         routing_key=topic,
         body=json.dumps(event_data)
     )

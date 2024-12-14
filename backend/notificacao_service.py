@@ -19,23 +19,29 @@ TOPICS = [
 notifications = []
 
 # --------------------------------- Consumidor RabbitMQ ---------------------------------
+def connect_rabbitmq():
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    channel = connection.channel()
+    channel.exchange_declare(exchange="app", exchange_type='direct')
+    return connection, channel
 
 def consume_events():
     """Função para consumir eventos dos tópicos do RabbitMQ."""
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
-    channel = connection.channel()
+    global notifications
+
+    connection, channel = connect_rabbitmq()
+
+    result = channel.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
 
     # Declaração das filas
     for topic in TOPICS:
-        channel.queue_declare(queue=topic)
+        channel.queue_bind(exchange="app", queue=queue_name, routing_key=topic)
 
     # Callback para processar mensagens recebidas
     def callback(ch, method, properties, body):
         event = json.loads(body)
         topic = method.routing_key
-
-        print(topic)
-        print(event)
 
         # Determina o status do pedido baseado no tópico
         status_mapping = {
@@ -46,32 +52,38 @@ def consume_events():
         }
         status = status_mapping.get(topic, "Desconhecido")
 
-        event.append(status)
-
-
         # Cria uma notificação com o ID e status do pedido
         notifications.append(event)
         print(f"[Notificação] Nova notificação: {event}")
 
-    # Configura consumo de mensagens
+    # Registra o callback
     for topic in TOPICS:
-        channel.basic_consume(queue=topic, on_message_callback=callback, auto_ack=True)
+        channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
 
+    # Loop manual para consumir mensagens
     print("[Notificação] Aguardando eventos...")
-    channel.start_consuming()
+    while True:
+        connection.process_data_events(time_limit=1)  # Processa eventos com timeout
+        time.sleep(0.1)  # Evita sobrecarga no loop
+
 
 # --------------------------------- SSE Endpoint ---------------------------------
 
 @app.route('/stream', methods=['GET'])
 def stream_notifications():
     """Endpoint SSE para enviar notificações ao frontend."""
+    print("--------------- Entro na funcao stream notification ------------------")
     def event_stream():
+        print("--------------- Entro na funcao event stream ------------------")
         last_sent = 0
         while True:
+            # print(f"Len notifications: {len(notification)}; len last_sent: {last_sent}")
             # Verifica se há notificações novas
             if len(notifications) > last_sent:
+                print(f"------------- Entro no if -------------------- Len notifications: {len(notifications)}; len last_sent: {last_sent}")
                 # Envia as notificações que ainda não foram enviadas
                 for i in range(last_sent, len(notifications)):
+                    print(f"------------- Ta no for -------------------- {i}")
                     notification = notifications[i]
                     data = json.dumps(notification)
                     yield f"data: {data}\n\n"

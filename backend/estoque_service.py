@@ -41,7 +41,10 @@ def query_db(query, args=(), one=False):
 
 # Função para conectar ao RabbitMQ
 def connect_rabbitmq():
-    return pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    channel = connection.channel()
+    channel.exchange_declare(exchange="app", exchange_type='direct')
+    return connection, channel
 
 # Atualiza o estoque ao consumir eventos
 def atualizar_estoque(evento, tipo_evento):
@@ -80,12 +83,14 @@ def atualizar_estoque(evento, tipo_evento):
 
 # Consumidor RabbitMQ
 def consume_events():
-    connection = connect_rabbitmq()
-    channel = connection.channel()
+    connection, channel = connect_rabbitmq()
+
+    result = channel.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
 
     # Declara as filas que serão consumidas
     for topic in [TOPICS["pedidos_criados"], TOPICS["pedidos_excluidos"]]:
-        channel.queue_declare(queue=topic)
+        channel.queue_bind(exchange = "app", queue = queue_name, routing_key = topic)
 
     def callback(ch, method, properties, body):
         evento = json.loads(body)
@@ -99,9 +104,8 @@ def consume_events():
 
     # Configura consumo para as filas
     for topic in [TOPICS["pedidos_criados"], TOPICS["pedidos_excluidos"]]:
-        channel.basic_consume(queue=topic, on_message_callback=callback, auto_ack=True)
+        channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
 
-    print("[Estoque] Aguardando eventos...")
     channel.start_consuming()
 
 def get_id_produto(nome_produto):
