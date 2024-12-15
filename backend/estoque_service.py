@@ -16,6 +16,8 @@ TOPICS = {
 # Configurações do Banco de Dados SQLite
 DATABASE = "produtos.db"
 
+# --------------------------------- Banco de Dados SQLite ---------------------------------
+
 def init_db():
     """Inicializa o banco de dados e cria a tabela estoque."""
     with sqlite3.connect(DATABASE) as conn:
@@ -46,8 +48,13 @@ def connect_rabbitmq():
     channel.exchange_declare(exchange="app", exchange_type='direct')
     return connection, channel
 
+# --------------------------------- Consumir Eventos no RabbitMQ ---------------------------------
+
 # Atualiza o estoque ao consumir eventos
 def atualizar_estoque(evento, tipo_evento):
+    pode_atualizar = 1
+    cliente = ""
+
     if tipo_evento == "Pedidos_Criados":
         # Reduz quantidade do estoque
         for produto in evento:
@@ -58,26 +65,49 @@ def atualizar_estoque(evento, tipo_evento):
             if registro:
                 if registro[0] - quantidade < 0:
                     print(f"[Estoque] Produto {nome_produto} Não foi possível atualizar por conta da quantidade")
-                    continue
-                nova_quantidade = registro[0] - quantidade
-                query_db("UPDATE estoque SET quantidade = ? WHERE id = ?", (nova_quantidade, registro[1]))
-                print(f"[Estoque] Produto {registro[1]} - Reduzido (Nova quantidade: {nova_quantidade})")
+                    pode_atualizar = 0
+                    break
+                print(f"[Estoque] Produto {registro[1]} - Pode ser reduzido)")
             else:
                 print(f"[Estoque] Produto {nome_produto} não encontrado no estoque.")
+        if pode_atualizar:
+            print(f"[Estoque] Produto irá atualizar o estoque.")
+            for produto in evento:
+                nome_produto = produto.get("nome")
+                quantidade = produto.get("quantidade", 0)
+                cliente = produto.get("cliente")
+
+                registro = query_db("SELECT quantidade, id FROM estoque WHERE nome = ?", (nome_produto,), one=True)
+
+                nova_quantidade = registro[0] - quantidade
+                query_db("UPDATE estoque SET quantidade = ? WHERE id = ?", (nova_quantidade, registro[1]))
+            # print("----------------- DEVERIA ATUALIZAR SOMENTE 1 VEZ -----------------")
+            # print(cliente)
+            query_db("INSERT INTO pedidos (cliente, status) VALUES (?, ?)", (cliente, "criado"))
+        else:
+            print(f"[Estoque] Produto NÃO irá atualizar o estoque.")
 
     elif tipo_evento == "Pedidos_Excluídos":
         # Reverte quantidade no estoque
         for produto in evento:
             nome_produto = produto.get("nome")
             quantidade = produto.get("quantidade", 0)
+            cliente = produto.get("cliente")
 
             registro = query_db("SELECT quantidade, id FROM estoque WHERE nome = ?", (nome_produto,), one=True)
             if registro:
                 nova_quantidade = registro[0] + quantidade
                 query_db("UPDATE estoque SET quantidade = ? WHERE id = ?", (nova_quantidade, registro[1]))
                 print(f"[Estoque] Produto {nome_produto} - Revertido (Nova quantidade: {nova_quantidade})")
+
+                produto_id = get_id_produto(nome_produto, cliente)
+                print(f"------------------- ID do PRODUTO: {produto_id} -------------------")
+
+                query_db("DELETE FROM produtos WHERE id = ?", (produto_id[0],))
+                query_db("DELETE FROM pedidos WHERE cliente = ?", (cliente,))
             else:
                 print(f"[Estoque] Produto {nome_produto} não encontrado no estoque.")
+        query_db("DELETE FROM produtos WHERE cliente = ?", (cliente,))
 
     print(f"[Estoque] Evento '{tipo_evento}' processado. Pedido ID: {evento}")
 
@@ -108,7 +138,15 @@ def consume_events():
 
     channel.start_consuming()
 
-def get_id_produto(nome_produto):
+# --------------------------------- Funcoes auxiliares ---------------------------------
+    
+def get_id_produto(nome_produto, cliente):
+    id = query_db("SELECT id FROM produtos WHERE nome = ? AND cliente = ?", (nome_produto, cliente), one=True)
+    if id == None:
+        return -1
+    return id
+
+def get_id_estoque(nome_produto):
     id = query_db("SELECT id FROM estoque WHERE nome = ?", (nome_produto,), one=True)
     if id == None:
         return -1
@@ -142,7 +180,7 @@ def consultar_estoque():
 def consultar_produto():
     data = request.json
     nome = data.get("nome")
-    produto_id = get_id_produto(nome)
+    produto_id = get_id_estoque(nome)
 
     if not achou_valor(produto_id):
         return jsonify({"error": "Produto não encontrado"}), 404
@@ -167,7 +205,7 @@ def atualizar_estoque_manual():
     data = request.json
     nome = data.get("nome")
     quantidade = data.get("quantidade")
-    produto_id = get_id_produto(nome)
+    produto_id = get_id_estoque(nome)
 
     if not achou_valor(produto_id):
         return jsonify({"error": "Produto não encontrado"}), 404

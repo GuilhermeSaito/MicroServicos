@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import sqlite3
 import pika
 import json
+import threading
 
 app = Flask(__name__)
 
@@ -12,6 +13,9 @@ DATABASE = "produtos.db"
 RABBITMQ_HOST = "localhost"
 TOPIC_PEDIDOS_CRIADOS = "Pedidos_Criados"
 TOPIC_PEDIDOS_EXCLUIDOS = "Pedidos_Excluídos"
+TOPIC_PAGAMENTOS_APROVADOS = "Pagamentos_Aprovados"
+TOPIC_PAGAMENTOS_RECUSADOS = "Pagamentos_Recusados"
+TOPIC_PEDIDOS_ENVIADOS = "Pedidos_Enviados"
 
 # --------------------------------- Banco de Dados SQLite ---------------------------------
 
@@ -27,6 +31,13 @@ def init_db():
                 cliente TEXT NOT NULL
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pedidos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente TEXT NOT NULL,
+                status TEXT NOT NULL
+            )
+        ''')
         conn.commit()
 
 def query_db(query, args=(), one=False):
@@ -40,12 +51,17 @@ def query_db(query, args=(), one=False):
         conn.commit()
 
 # --------------------------------- Publicar Eventos no RabbitMQ ---------------------------------
+        
+# Função para conectar ao RabbitMQ
+def connect_rabbitmq():
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    channel = connection.channel()
+    channel.exchange_declare(exchange="app", exchange_type='direct')
+    return connection, channel
 
 def publish_event(topic, event_data):
     """Publica um evento no RabbitMQ."""
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
-    channel = connection.channel()
-    channel.exchange_declare(exchange = "app", exchange_type='direct')
+    connection, channel = connect_rabbitmq()
 
     channel.basic_publish(
         exchange="app",
@@ -54,6 +70,44 @@ def publish_event(topic, event_data):
     )
     print(f"[RabbitMQ] Evento publicado no tópico '{topic}': {event_data}")
     connection.close()
+
+# --------------------------------- Consumir Eventos no RabbitMQ ---------------------------------
+    
+def consume_event(topic):
+    """Consome mensagens de um tópico RabbitMQ."""
+    def callback(ch, method, properties, body):
+        print(f"[RabbitMQ] Evento recebido no tópico '{topic}': {body}")
+        event_data = json.loads(body)
+        handle_event(topic, event_data)
+
+    connection, channel = connect_rabbitmq()
+
+    result = channel.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
+    
+    channel.queue_bind(exchange = "app", queue = queue_name, routing_key = topic)
+    channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
+
+    print(f"[RabbitMQ] Consumindo tópico: {topic}")
+    channel.start_consuming()
+
+def handle_event(topic, event_data):
+    """Lógica para tratar eventos recebidos."""
+    id = get_id_pedido(event_data.get("cliente"))
+    print(f"------------------ HANDLE EVENT: {id} --------------------")
+    if topic == TOPIC_PAGAMENTOS_APROVADOS:
+        atualizar_status_pedido(id[0], "Aprovado")
+    elif topic == TOPIC_PAGAMENTOS_RECUSADOS:
+        atualizar_status_pedido(id[0], "Recusado")
+        publish_event(TOPIC_PEDIDOS_EXCLUIDOS, event_data)
+    elif topic == TOPIC_PEDIDOS_ENVIADOS:
+        atualizar_status_pedido(id[0], "Enviado")
+
+def atualizar_status_pedido(pedido_id, status):
+    query_db("UPDATE pedidos SET status = ? WHERE id = ?", (status, pedido_id))
+    print(f"[Banco de Dados] Pedido {pedido_id} atualizado para status: {status}")
+
+# --------------------------------- Funcoes auxiliares ---------------------------------
 
 def get_id_produto(nome_produto, cliente):
     id = query_db("SELECT id FROM produtos WHERE nome = ? AND cliente = ?", (nome_produto, cliente), one=True)
@@ -65,6 +119,12 @@ def achou_valor(val):
     if val == -1:
         return 0
     return 1
+
+def get_id_pedido(cliente):
+    id = query_db("SELECT id FROM pedidos WHERE cliente = ?", (cliente,), one=True)
+    if id == None:
+        return -1
+    return id
 
 # --------------------------------- Endpoints REST ---------------------------------
 
@@ -158,7 +218,7 @@ def criar_pedido():
 
 # Excluir um pedido (publica evento)
 @app.route("/produtos/pedidos/delete", methods=["POST"])
-def excluir_pedido(pedido_id):
+def excluir_pedido():
     data = request.json
     cliente = data.get("cliente")
 
@@ -178,11 +238,27 @@ def excluir_pedido(pedido_id):
     evento = pedidos_cliente
     
     publish_event(TOPIC_PEDIDOS_EXCLUIDOS, evento)
-    return jsonify({"message": f"Pedido {pedido_id} excluído e evento publicado"}), 200
+    return jsonify({"message": f"Pedido do cliente {cliente} excluído e evento publicado"}), 200
+
+@app.route("/produtos/pedidos/status", methods=["GET"])
+def consultar_pedido():
+    data = request.json
+    cliente = data.get("cliente")
+    pedido_id = get_id_pedido(cliente)
+    
+    pedido = query_db("SELECT id, cliente, status FROM pedidos WHERE id = ?", (pedido_id,), one=True)
+    if pedido:
+        return jsonify({"id": pedido[0], "cliente": pedido[1], "status": pedido[2]}), 200
+    return jsonify({"error": "Pedido não encontrado"}), 404
 
 # --------------------------------- Inicialização ---------------------------------
 
 if __name__ == "__main__":
     init_db()
     print("[Microsserviço Principal] Banco de dados inicializado.")
+
+    threading.Thread(target=consume_event, args=(TOPIC_PAGAMENTOS_APROVADOS,), daemon=True).start()
+    threading.Thread(target=consume_event, args=(TOPIC_PAGAMENTOS_RECUSADOS,), daemon=True).start()
+    threading.Thread(target=consume_event, args=(TOPIC_PEDIDOS_ENVIADOS,), daemon=True).start()
+
     app.run(port=5000, debug=True)
