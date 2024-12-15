@@ -1,9 +1,11 @@
 from flask import Flask
+from flask_cors import CORS
 import pika
 import threading
 import json
 
 app = Flask(__name__)
+CORS(app)
 
 RABBITMQ_HOST = "localhost"
 TOPICS = {

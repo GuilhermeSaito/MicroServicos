@@ -1,10 +1,12 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import pika
 import threading
 import json
 import sqlite3
 
 app = Flask(__name__)
+CORS(app)
 
 # Configurações do RabbitMQ
 RABBITMQ_HOST = "localhost"
@@ -83,7 +85,14 @@ def atualizar_estoque(evento, tipo_evento):
                 query_db("UPDATE estoque SET quantidade = ? WHERE id = ?", (nova_quantidade, registro[1]))
             # print("----------------- DEVERIA ATUALIZAR SOMENTE 1 VEZ -----------------")
             # print(cliente)
-            query_db("INSERT INTO pedidos (cliente, status) VALUES (?, ?)", (cliente, "criado"))
+            produto_existente = query_db("SELECT id FROM pedidos WHERE cliente = ?", (cliente,), one=True)
+
+            if not produto_existente:
+                query_db("INSERT INTO pedidos (cliente, status) VALUES (?, ?)", (cliente, "criado"))
+            else:
+                print(f"[Estoque] Pedido já existe, não precisa criar um novo.")
+            
+            
         else:
             print(f"[Estoque] Produto NÃO irá atualizar o estoque.")
 

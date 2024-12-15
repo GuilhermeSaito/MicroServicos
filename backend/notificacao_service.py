@@ -1,10 +1,12 @@
 from flask import Flask, Response
+from flask_cors import CORS
 import pika
 import threading
 import json
 import time
 
 app = Flask(__name__)
+CORS(app)
 
 # Configurações do RabbitMQ
 RABBITMQ_HOST = "localhost"

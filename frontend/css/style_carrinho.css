@@ -1,0 +1,53 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  
+  h1 {
+    background-color: #007BFF;
+    color: white;
+    padding: 10px;
+    margin: 0;
+    text-align: center;
+  }
+  
+  h2 {
+    margin: 20px;
+    color: #333;
+  }
+  
+  #cartInfo {
+    margin: 20px;
+  }
+  
+  ul {
+    list-style-type: none;
+    padding: 0;
+  }
+  
+  li {
+    background-color: white;
+    margin: 10px 0;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  button.delete-button {
+    background-color: #FF4D4D;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  button.delete-button:hover {
+    background-color: #e60000;
+  }
+  

@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import sqlite3
 import pika
 import json
 import threading
 
 app = Flask(__name__)
+CORS(app)
 
 # Configurações do Banco de Dados SQLite
 DATABASE = "produtos.db"
@@ -178,7 +180,7 @@ def atualizar_produto():
     return jsonify({"message": f"Produto {produto_id} atualizado com sucesso"}), 200
 
 # Remover um produto
-@app.route("/produtos/remove", methods=["GET"])
+@app.route("/produtos/remove", methods=["POST"])
 def remover_produto():
     data = request.json
     nome = data.get("nome")
@@ -188,7 +190,7 @@ def remover_produto():
     if not achou_valor(produto_id):
         return jsonify({"error": "Produto não encontrado"}), 404
 
-    query_db("DELETE FROM produtos WHERE id = ?", (produto_id,))
+    query_db("DELETE FROM produtos WHERE id = ?", (produto_id[0],))
     return jsonify({"message": f"Produto {produto_id} removido com sucesso"}), 200
 
 # Criar um pedido (publica evento)

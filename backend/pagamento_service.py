@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import pika
 import json
 
 app = Flask(__name__)
+CORS(app)
 
 # Configurações do RabbitMQ
 RABBITMQ_HOST = "localhost"

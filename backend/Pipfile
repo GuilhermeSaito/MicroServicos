@@ -8,6 +8,7 @@ flask = "*"
 pika = "*"
 flask-sse = "*"
 requests = "*"
+flask-cors = "*"
 
 [dev-packages]
 

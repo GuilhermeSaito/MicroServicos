@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import requests
 import random
 import threading
@@ -6,6 +7,7 @@ import time
 import json
 
 app = Flask(__name__)
+CORS(app)
 
 # Configuração do Webhook (backend do e-commerce)
 ECOMMERCE_WEBHOOK_URL = "http://localhost:5002/pagamento/webhook"
