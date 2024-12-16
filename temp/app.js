@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const eventSource = new EventSource("http://localhost:5004/stream");
   
     eventSource.onmessage = (event) => {
+      alert(event.data);
       // Parsea a notificação recebida
       const data = JSON.parse(event.data);
   

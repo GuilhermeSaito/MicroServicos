@@ -4,6 +4,7 @@ import sqlite3
 import pika
 import json
 import threading
+from time import sleep
 
 app = Flask(__name__)
 CORS(app)
@@ -16,7 +17,9 @@ RABBITMQ_HOST = "localhost"
 TOPIC_PEDIDOS_CRIADOS = "Pedidos_Criados"
 TOPIC_PEDIDOS_EXCLUIDOS = "Pedidos_Excluídos"
 TOPIC_PAGAMENTOS_APROVADOS = "Pagamentos_Aprovados"
+TOPIC_PAGAMENTOS_APROVADOS_MAIN = "Pagamentos_Aprovados_main"
 TOPIC_PAGAMENTOS_RECUSADOS = "Pagamentos_Recusados"
+TOPIC_PAGAMENTOS_RECUSADOS_MAIN = "Pagamentos_Recusados_main"
 TOPIC_PEDIDOS_ENVIADOS = "Pedidos_Enviados"
 
 # --------------------------------- Banco de Dados SQLite ---------------------------------
@@ -95,15 +98,42 @@ def consume_event(topic):
 
 def handle_event(topic, event_data):
     """Lógica para tratar eventos recebidos."""
-    id = get_id_pedido(event_data.get("cliente"))
-    print(f"------------------ HANDLE EVENT: {id} --------------------")
-    if topic == TOPIC_PAGAMENTOS_APROVADOS:
-        atualizar_status_pedido(id[0], "Aprovado")
-    elif topic == TOPIC_PAGAMENTOS_RECUSADOS:
-        atualizar_status_pedido(id[0], "Recusado")
-        publish_event(TOPIC_PEDIDOS_EXCLUIDOS, event_data)
+    if not topic == TOPIC_PEDIDOS_ENVIADOS:
+        cliente = event_data.get("cliente")
+        id = get_id_pedido(cliente)
+        print(f"------------------ HANDLE EVENT: {id} --------------------")
+        print(f"------------------ HANDLE EVENT: {cliente} --------------------")
+        print(f"------------------ HANDLE EVENT: {event_data} --------------------")
+        if topic == TOPIC_PAGAMENTOS_APROVADOS_MAIN:
+            atualizar_status_pedido(id[0], "Aprovado")
+            sleep(2)
+            if not cliente:
+                print("[PEDIDO] Problema ao atualizar o pedido a partir do pagamento, não há cliente")
+
+            id_pedido = query_db("SELECT id FROM pedidos WHERE cliente = ?", (cliente,))
+
+            publish_event(TOPIC_PAGAMENTOS_APROVADOS, id_pedido[0])
+        elif topic == TOPIC_PAGAMENTOS_RECUSADOS_MAIN:
+            atualizar_status_pedido(id[0], "Recusado")
+
+            if not cliente:
+                print("[PEDIDO] Problema ao atualizar o pedido a partir do pagamento, não há cliente")
+
+            produto_existente = query_db("SELECT id, nome, quantidade, cliente FROM produtos WHERE cliente = ?", (cliente,))
+            pedidos_cliente = [
+                {
+                    "id": reg[0],
+                    "nome": reg[1],
+                    "quantidade": reg[2],
+                    "cliente": reg[3]
+                }
+                for reg in produto_existente
+            ]
+            evento = pedidos_cliente
+
+            publish_event(TOPIC_PAGAMENTOS_RECUSADOS, evento)
     elif topic == TOPIC_PEDIDOS_ENVIADOS:
-        atualizar_status_pedido(id[0], "Enviado")
+        atualizar_status_pedido(event_data.get("id"), "Enviado")
 
 def atualizar_status_pedido(pedido_id, status):
     query_db("UPDATE pedidos SET status = ? WHERE id = ?", (status, pedido_id))
@@ -259,8 +289,8 @@ if __name__ == "__main__":
     init_db()
     print("[Microsserviço Principal] Banco de dados inicializado.")
 
-    threading.Thread(target=consume_event, args=(TOPIC_PAGAMENTOS_APROVADOS,), daemon=True).start()
-    threading.Thread(target=consume_event, args=(TOPIC_PAGAMENTOS_RECUSADOS,), daemon=True).start()
+    threading.Thread(target=consume_event, args=(TOPIC_PAGAMENTOS_APROVADOS_MAIN,), daemon=True).start()
+    threading.Thread(target=consume_event, args=(TOPIC_PAGAMENTOS_RECUSADOS_MAIN,), daemon=True).start()
     threading.Thread(target=consume_event, args=(TOPIC_PEDIDOS_ENVIADOS,), daemon=True).start()
 
     app.run(port=5000, debug=True)

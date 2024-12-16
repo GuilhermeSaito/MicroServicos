@@ -12,7 +12,8 @@ CORS(app)
 RABBITMQ_HOST = "localhost"
 TOPICS = {
     "pedidos_criados": "Pedidos_Criados",
-    "pedidos_excluidos": "Pedidos_Excluídos"
+    "pedidos_excluidos": "Pedidos_Excluídos",
+    "pagamentos_recusados": "Pagamentos_Recusados"
 }
 
 # Configurações do Banco de Dados SQLite
@@ -60,6 +61,7 @@ def atualizar_estoque(evento, tipo_evento):
     if tipo_evento == "Pedidos_Criados":
         # Reduz quantidade do estoque
         for produto in evento:
+            print(f"------------------ {produto} -----------------")
             nome_produto = produto.get("nome")
             quantidade = produto.get("quantidade", 0)
 
@@ -96,9 +98,10 @@ def atualizar_estoque(evento, tipo_evento):
         else:
             print(f"[Estoque] Produto NÃO irá atualizar o estoque.")
 
-    elif tipo_evento == "Pedidos_Excluídos":
+    elif tipo_evento == "Pedidos_Excluídos" or "Pagamentos_Recusados":
         # Reverte quantidade no estoque
         for produto in evento:
+            print(f"------------------- PRODUTO: {produto} -------------------")
             nome_produto = produto.get("nome")
             quantidade = produto.get("quantidade", 0)
             cliente = produto.get("cliente")
@@ -113,10 +116,9 @@ def atualizar_estoque(evento, tipo_evento):
                 print(f"------------------- ID do PRODUTO: {produto_id} -------------------")
 
                 query_db("DELETE FROM produtos WHERE id = ?", (produto_id[0],))
-                query_db("DELETE FROM pedidos WHERE cliente = ?", (cliente,))
             else:
                 print(f"[Estoque] Produto {nome_produto} não encontrado no estoque.")
-        query_db("DELETE FROM produtos WHERE cliente = ?", (cliente,))
+        query_db("DELETE FROM pedidos WHERE cliente = ?", (cliente,))
 
     print(f"[Estoque] Evento '{tipo_evento}' processado. Pedido ID: {evento}")
 
@@ -128,7 +130,7 @@ def consume_events():
     queue_name = result.method.queue
 
     # Declara as filas que serão consumidas
-    for topic in [TOPICS["pedidos_criados"], TOPICS["pedidos_excluidos"]]:
+    for topic in [TOPICS["pedidos_criados"], TOPICS["pedidos_excluidos"], TOPICS["pagamentos_recusados"]]:
         channel.queue_bind(exchange = "app", queue = queue_name, routing_key = topic)
 
     def callback(ch, method, properties, body):
@@ -138,11 +140,11 @@ def consume_events():
 
         if topic == TOPICS["pedidos_criados"]:
             atualizar_estoque(evento, "Pedidos_Criados")
-        elif topic == TOPICS["pedidos_excluidos"]:
+        elif topic == TOPICS["pedidos_excluidos"] or TOPICS["pagamentos_recusados"]:
             atualizar_estoque(evento, "Pedidos_Excluídos")
 
     # Configura consumo para as filas
-    for topic in [TOPICS["pedidos_criados"], TOPICS["pedidos_excluidos"]]:
+    for topic in [TOPICS["pedidos_criados"], TOPICS["pedidos_excluidos"], TOPICS["pagamentos_recusados"]]:
         channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
 
     channel.start_consuming()

@@ -12,6 +12,7 @@ CORS(app)
 RABBITMQ_HOST = "localhost"
 TOPICS = [
     "Pedidos_Criados",
+    "Pedidos_Excluídos",
     "Pagamentos_Aprovados",
     "Pagamentos_Recusados",
     "Pedidos_Enviados"
@@ -101,4 +102,4 @@ def stream_notifications():
 threading.Thread(target=consume_events, daemon=True).start()
 
 if __name__ == "__main__":
-    app.run(port=5004, debug=True)
+    app.run(port=5004, debug=True, threaded=True)

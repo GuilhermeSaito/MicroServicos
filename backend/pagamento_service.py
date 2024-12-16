@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pika
 import json
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -9,8 +10,9 @@ CORS(app)
 # Configurações do RabbitMQ
 RABBITMQ_HOST = "localhost"
 EXCHANGE_NAME = "app"
-TOPIC_APPROVED = "Pagamentos_Aprovados"
-TOPIC_DENIED = "Pagamentos_Recusados"
+PAYMENT_API_URL = "http://localhost:5005/transacoes/pay"
+TOPIC_APPROVED = "Pagamentos_Aprovados_main"
+TOPIC_DENIED = "Pagamentos_Recusados_main"
 
 def connect_rabbitmq():
     """Estabelece conexão com o RabbitMQ e retorna a conexão e o canal."""
@@ -18,6 +20,26 @@ def connect_rabbitmq():
     channel = connection.channel()
     channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type='direct')
     return connection, channel
+
+@app.route('/pagamento/create', methods=['POST'])
+def create():
+    data = request.json
+
+    # Validação básica
+    if not data or not all(key in data for key in ("transaction_id", "quantidade", "cliente")):
+        return jsonify({"error": "Dados inválidos."}), 400
+
+    # Adiciona a transação no banco de dados simulado
+    transaction = {
+        "transaction_id": data["transaction_id"],
+        "quantidade": data["quantidade"],
+        "cliente": data["cliente"],
+        "status": "em processamento"
+    }
+
+    response = requests.post(PAYMENT_API_URL, json=transaction)
+
+    return jsonify({"message": "Pagamento em processamento.", "transaction": transaction}), 202
 
 @app.route('/pagamento/webhook', methods=['POST'])
 def webhook():

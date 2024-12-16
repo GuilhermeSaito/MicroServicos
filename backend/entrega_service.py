@@ -15,16 +15,17 @@ TOPICS = {
 
 def connect_rabbitmq():
     """Conecta ao RabbitMQ."""
-    return pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    channel = connection.channel()
+    channel.exchange_declare(exchange="app", exchange_type='direct')
+    return connection, channel
 
 def publicar_pedido_enviado(pedido):
     """Publica no tópico Pedidos_Enviados."""
-    connection = connect_rabbitmq()
-    channel = connection.channel()
-    channel.queue_declare(queue=TOPICS["pedidos_enviados"])
+    connection, channel = connect_rabbitmq()
 
     channel.basic_publish(
-        exchange="",
+        exchange="app",
         routing_key=TOPICS["pedidos_enviados"],
         body=json.dumps(pedido)
     )
@@ -33,40 +34,33 @@ def publicar_pedido_enviado(pedido):
 
 def processar_pagamento_aprovado(evento):
     """Processa o evento de pagamento aprovado e gera uma nota fiscal."""
-    data = []
-    for produto in evento:
-        produto_id = produto.get("id")
-        nome_produto = produto.get("nome")
-        quantidade = produto.get("quantidade", 0)
-        cliente = produto.get("cliente")
-
-        nota_fiscal = {
-            "pedido_id": produto_id,
-            "cliente": cliente,
-            "produtos": nome_produto,
-            "quantidade": quantidade,
-            "status": "Nota Fiscal Emitida"
-        }
-
-        data.append(nota_fiscal)
-
-        print(f"[Entrega Service] Nota Fiscal Gerada: {nota_fiscal}")
+    print(f"--------------------- {evento} -----------------")
+    print(type(evento))
+    data = {
+        "id": evento[0],
+        "status": "Nota Fiscal Emitida"
+    }
+    
+    print(f"[Entrega Service] Nota Fiscal Gerada: {data}")
 
     # Publicar o evento no tópico Pedidos_Enviados
     publicar_pedido_enviado(data)
 
 def consume_pagamentos():
     """Consome eventos do tópico Pagamentos_Aprovados."""
-    connection = connect_rabbitmq()
-    channel = connection.channel()
-    channel.queue_declare(queue=TOPICS["pagamentos_aprovados"])
-
     def callback(ch, method, properties, body):
         evento = json.loads(body)
         print(f"[Entrega Service] Evento recebido: {evento}")
         processar_pagamento_aprovado(evento)
 
-    channel.basic_consume(queue=TOPICS["pagamentos_aprovados"], on_message_callback=callback, auto_ack=True)
+    connection, channel = connect_rabbitmq()
+
+    result = channel.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
+    
+    channel.queue_bind(exchange = "app", queue = queue_name, routing_key = TOPICS["pagamentos_aprovados"])
+    channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
+
     print("[Entrega Service] Aguardando pagamentos aprovados...")
     channel.start_consuming()
 
