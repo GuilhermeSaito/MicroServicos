@@ -64,6 +64,50 @@ document.addEventListener("DOMContentLoaded", () => {
   cartInfo.appendChild(buyButton);
 });
 
+// Função para iniciar a conexão SSE e receber notificações
+document.getElementById('sseBtn').addEventListener('click', () => {
+  const notificationsContainer = document.getElementById("notifications");
+
+  // Conexão ao endpoint SSE
+  const eventSource = new EventSource("http://localhost:5004/stream");
+
+  eventSource.onmessage = (event) => {
+    alert(event.data);
+    // Parsea a notificação recebida
+    const data = JSON.parse(event.data);
+
+    // Cria o elemento de notificação
+    const notificationElement = document.createElement("div");
+    notificationElement.className = "notification";
+    notificationElement.innerHTML = `
+      <strong>ID do Pedido:</strong> ${data}<br>
+    `;
+
+    // Adiciona um estilo diferente para erros
+    if (data[1].includes("Recusado")) {
+      notificationElement.classList.add("error");
+    }
+
+    // Adiciona a notificação ao container
+    notificationsContainer.appendChild(notificationElement);
+
+    // Remove a mensagem de "Aguardando notificações" se existir
+    const placeholder = notificationsContainer.querySelector("p");
+    if (placeholder) placeholder.remove();
+
+    // Rola automaticamente para a última notificação
+    notificationsContainer.scrollTop = notificationsContainer.scrollHeight;
+  };
+
+  eventSource.onerror = () => {
+    console.error("Erro na conexão com o servidor SSE.");
+  };
+
+  // Desabilita o botão para evitar múltiplas conexões
+  document.getElementById('sseBtn').disabled = true;
+  alert("Conexão com o servidor iniciada. Aguardando notificações...");
+});
+
 // Função para deletar um item
 function deleteItem(item, index) {
   const cartInfo = document.getElementById("cartInfo");

@@ -69,4 +69,26 @@ body {
   #buyButton:hover {
     background-color: #218838;
   }
+
+  .notification {
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+  }
   
+  .notification.error {
+    border-color: #ff4d4d;
+    background-color: #ffe6e6;
+  }
+  
+  #notifications {
+    margin-top: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 5px;
+    background: #f8f8f8;
+  }

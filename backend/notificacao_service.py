@@ -77,8 +77,8 @@ def stream_notifications():
     """Endpoint SSE para enviar notificações ao frontend."""
     print("--------------- Entro na funcao stream notification ------------------")
     def event_stream():
-        print("--------------- Entro na funcao event stream ------------------")
         last_sent = 0
+        print("--------------- Entro na funcao event stream ------------------")
         while True:
             # print(f"Len notifications: {len(notification)}; len last_sent: {last_sent}")
             # Verifica se há notificações novas

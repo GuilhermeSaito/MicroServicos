@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     try {
-      const response = await fetch("http://localhost:5002/pagamento/create", {
+      const response = await fetch("http://localhost:5005/transacoes/pay", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -70,4 +70,48 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Erro de conexão:", error);
     }
   });
+});
+
+// Função para iniciar a conexão SSE e receber notificações
+document.getElementById('sseBtn').addEventListener('click', () => {
+  const notificationsContainer = document.getElementById("notifications");
+
+  // Conexão ao endpoint SSE
+  const eventSource = new EventSource("http://localhost:5004/stream");
+
+  eventSource.onmessage = (event) => {
+    alert(event.data);
+    // Parsea a notificação recebida
+    const data = JSON.parse(event.data);
+
+    // Cria o elemento de notificação
+    const notificationElement = document.createElement("div");
+    notificationElement.className = "notification";
+    notificationElement.innerHTML = `
+      <strong>ID do Pedido:</strong> ${data}<br>
+    `;
+
+    // Adiciona um estilo diferente para erros
+    if (data[1].includes("Recusado")) {
+      notificationElement.classList.add("error");
+    }
+
+    // Adiciona a notificação ao container
+    notificationsContainer.appendChild(notificationElement);
+
+    // Remove a mensagem de "Aguardando notificações" se existir
+    const placeholder = notificationsContainer.querySelector("p");
+    if (placeholder) placeholder.remove();
+
+    // Rola automaticamente para a última notificação
+    notificationsContainer.scrollTop = notificationsContainer.scrollHeight;
+  };
+
+  eventSource.onerror = () => {
+    console.error("Erro na conexão com o servidor SSE.");
+  };
+
+  // Desabilita o botão para evitar múltiplas conexões
+  document.getElementById('sseBtn').disabled = true;
+  alert("Conexão com o servidor iniciada. Aguardando notificações...");
 });
